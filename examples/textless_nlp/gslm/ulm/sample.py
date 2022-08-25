@@ -105,10 +105,13 @@ def main(args):
 
     if arg_debug:
         prompts = prompts[:10]
-
+    # args.generation["nbest"] = 100
+    # args.generation["beam"] = 10
+    print(args.generation)
     generator = task.build_generator(models, args.generation)
 
     start_id = 0
+    prob_output = {}
     pbar = tqdm.tqdm(total=len(prompts))
     for batch in make_batches(prompts, args, task, max_positions):
         src_tokens = batch.src_tokens
@@ -125,6 +128,7 @@ def main(args):
 
         results = []
         translations = task.inference_step(generator, models, sample)
+        # print(translations)
         for i, (id, hypos) in enumerate(zip(batch.ids.tolist(), translations)):
             src_tokens_i = utils.strip_pad(src_tokens[i], tgt_dict.pad())
             results.append((i + start_id, src_tokens_i, hypos))
@@ -137,6 +141,10 @@ def main(args):
 
             # Process top predictions
             for hypo_id, hypo in enumerate(hypos):
+                # print(hypo["lprobs"])
+                # hypo_test = [int(s)-4 for s in hypo['tokens'].int().cpu()]
+                # print(hypo_test)
+                # print("Scores length:", len(hypo["positional_scores"].cpu()))
                 _hypo_tokens, hypo_str, _alignment = utils.post_process_prediction(
                     hypo_tokens=hypo['tokens'].int().cpu(),
                     src_str=src_str,
@@ -149,8 +157,20 @@ def main(args):
                 detok_hypo_str = hypo_str
                 utterance = detok_hypo_str
                 print(f'{seq_id[id]}__{hypo_id}|{utterance}', file=output_file)
+                l_id = seq_id[id].split('_')
+                num_context = l_id.pop()
+                file_id = '_'.join(l_id)
+                if file_id not in prob_output:
+                    prob_output[file_id] = [[], []]
+
+                prob_output[file_id][0].append(hypo["lprobs"].cpu().numpy())
+                # print(file_id, ": ", hypo["lprobs"].tolist().index(max(hypo["lprobs"].tolist())))
+                prob_output[file_id][1].append(num_context)
             pbar.update(1)
+
         start_id += len(results)
+    # print(prob_output)
+    np.save('prob_outputs.npy', prob_output, allow_pickle=True)
 
     # output_file.close()
 

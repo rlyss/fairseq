@@ -331,7 +331,10 @@ class SequenceGenerator(nn.Module):
             original_batch_idxs = sample["id"]
         else:
             original_batch_idxs = torch.arange(0, bsz).type_as(tokens)
-
+        # print(src_tokens)
+        src_lens = [(len(l) if 1 not in l else l.tolist().index(1)) for l in src_tokens]
+        # print(src_lens)
+        final_lprobs = [[] for _ in src_tokens]
         for step in range(max_len + 1):  # one extra step for EOS marker
             # reorder decoder internal states based on the prev choice of beams
             if reorder_state is not None:
@@ -415,6 +418,15 @@ class SequenceGenerator(nn.Module):
             if self.repeat_ngram_blocker is not None:
                 lprobs = self.repeat_ngram_blocker(tokens, lprobs, bsz, beam_size, step)
 
+            if step + 1 in src_lens:
+                batch_index = src_lens.index(step + 1)
+                final_lprobs[batch_index] = lprobs[batch_index].clone().detach()
+                # print("Batch Index: ", batch_index)
+                # print("Src: ", src_tokens[batch_index])
+                # print("Src len: ", src_lens[batch_index])
+                # print("Step probs: ", final_lprobs[batch_index])
+                # print("Largest index: ", final_lprobs[batch_index].tolist().index(max(final_lprobs[batch_index].tolist())))
+
             # Shape: (batch, cand_size)
             cand_scores, cand_indices, cand_beams = self.search.step(
                 step,
@@ -423,7 +435,9 @@ class SequenceGenerator(nn.Module):
                 tokens[:, : step + 1],
                 original_batch_idxs,
             )
-
+            # print("cand_scores: ", cand_scores)
+            # if step + 1 in src_lens:
+            #     print("cand_indices: ", cand_indices)
             # cand_bbsz_idx contains beam indices for the top candidate
             # hypotheses, with a range of values: [0, bsz*beam_size),
             # and dimensions: [bsz, cand_size]
@@ -574,7 +588,7 @@ class SequenceGenerator(nn.Module):
 
             # reorder incremental state in decoder
             reorder_state = active_bbsz_idx
-
+        # print("Final lprobs: ", final_lprobs)
         # sort by score descending
         for sent in range(len(finalized)):
             scores = torch.tensor(
@@ -585,6 +599,8 @@ class SequenceGenerator(nn.Module):
             finalized[sent] = torch.jit.annotate(
                 List[Dict[str, Tensor]], finalized[sent]
             )
+            finalized[sent][0]["lprobs"] = final_lprobs[sent]
+            # print(final_lprobs[sent])
         return finalized
 
     def _prefix_tokens(

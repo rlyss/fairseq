@@ -107,7 +107,7 @@ def main(args, logger):
 
     _, fnames, _ = get_audio_files(args.manifest_path)
 
-    os.makedirs(os.path.dirname(args.out_quantized_file_path), exist_ok=True)
+    # os.makedirs(os.path.dirname(args.out_quantized_file_path), exist_ok=True)
     print(f"Writing quantized predictions to {args.out_quantized_file_path}")
     with open(args.out_quantized_file_path, "w") as fout:
         for i, feats in enumerate(features_batch):
